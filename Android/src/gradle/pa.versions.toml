@@ -3,6 +3,7 @@
 okhttp = "4.12.0"
 coroutines = "1.10.2"
 junit = "4.13.2"
+sherpaOnnx = "2.0.1"
 
 [libraries]
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
@@ -10,3 +11,5 @@ okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver",
 coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+# sherpa-onnx static-link AAR, arm64-v8a only; served from pa-wakeword/localrepo (scripts/fetch-wakeword-assets.sh).
+sherpa-onnx = { group = "com.k2fsa.sherpa.onnx", name = "sherpa-onnx-static-arm64", version.ref = "sherpaOnnx" }

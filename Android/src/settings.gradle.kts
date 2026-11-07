@@ -43,6 +43,11 @@ dependencyResolutionManagement {
     //        mavenLocal()
     google()
     mavenCentral()
+    // PhoneAgent: sherpa-onnx AAR for :pa-wakeword, created by scripts/fetch-wakeword-assets.sh.
+    exclusiveContent {
+      forRepository { maven { url = settingsDir.resolve("pa-wakeword/localrepo").toURI() } }
+      filter { includeGroup("com.k2fsa.sherpa.onnx") }
+    }
   }
 }
 
