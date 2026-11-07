@@ -4,6 +4,10 @@ okhttp = "4.12.0"
 coroutines = "1.10.2"
 junit = "4.13.2"
 sherpaOnnx = "2.0.1"
+# LiteRT (TFLite Interpreter API) runs the openWakeWord feature models in :pa-wakeword.
+litert = "1.4.2"
+# Unit tests only: runs the same feature models (ONNX copies) on the JVM for the parity test.
+onnxruntimeJvm = "1.31.0"
 
 [libraries]
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
@@ -13,3 +17,5 @@ coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 # sherpa-onnx static-link AAR, arm64-v8a only; served from pa-wakeword/localrepo (scripts/fetch-wakeword-assets.sh).
 sherpa-onnx = { group = "com.k2fsa.sherpa.onnx", name = "sherpa-onnx-static-arm64", version.ref = "sherpaOnnx" }
+litert = { group = "com.google.ai.edge.litert", name = "litert", version.ref = "litert" }
+onnxruntime-jvm = { group = "com.microsoft.onnxruntime", name = "onnxruntime", version.ref = "onnxruntimeJvm" }

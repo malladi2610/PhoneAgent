@@ -8,8 +8,8 @@ import java.io.Closeable
 import java.io.IOException
 
 /**
- * 16 kHz mono PCM16 microphone capture (VOICE_RECOGNITION source), read in 100 ms chunks and
- * converted to floats in [-1, 1]. The caller must hold RECORD_AUDIO.
+ * 16 kHz mono PCM16 microphone capture (VOICE_RECOGNITION source), read in 80 ms chunks (one
+ * speech-embedding frame) and converted to floats in [-1, 1]. The caller must hold RECORD_AUDIO.
  */
 internal class MicCapture private constructor(private val record: AudioRecord) : Closeable {
   private val shorts = ShortArray(CHUNK_SAMPLES)
@@ -32,7 +32,7 @@ internal class MicCapture private constructor(private val record: AudioRecord) :
   }
 
   companion object {
-    const val CHUNK_SAMPLES = WakePipeline.SAMPLE_RATE / 10 // 100 ms
+    const val CHUNK_SAMPLES = SpeechEmbeddingStream.CHUNK // 80 ms
 
     /**
      * Opens and starts the mic. The buffer holds 2 s so the listener can spend a moment embedding

@@ -62,17 +62,20 @@ class VoiceProfile(embeddings: List<FloatArray>) {
   fun save(file: File) {
     file.parentFile?.mkdirs()
     val tmp = File(file.path + ".tmp")
-    DataOutputStream(tmp.outputStream().buffered()).use { out ->
-      out.writeInt(MAGIC)
-      out.writeInt(VERSION)
-      out.writeInt(size)
-      out.writeInt(embeddings.first().size)
-      for (e in embeddings) for (v in e) out.writeFloat(v)
-    }
+    DataOutputStream(tmp.outputStream().buffered()).use { write(it) }
     if (!tmp.renameTo(file)) {
       tmp.delete()
       throw IOException("Could not write $file")
     }
+  }
+
+  /** Header (magic, version, count, dim) + floats; read back with [read]. */
+  fun write(out: DataOutputStream) {
+    out.writeInt(MAGIC)
+    out.writeInt(VERSION)
+    out.writeInt(size)
+    out.writeInt(embeddings.first().size)
+    for (e in embeddings) for (v in e) out.writeFloat(v)
   }
 
   companion object {
@@ -94,14 +97,20 @@ class VoiceProfile(embeddings: List<FloatArray>) {
     /** Reads a profile written by [save]; throws [IOException] if the file is missing or corrupt. */
     fun load(file: File): VoiceProfile {
       DataInputStream(file.inputStream().buffered()).use { input ->
-        if (input.readInt() != MAGIC) throw IOException("Not a voice profile: $file")
-        if (input.readInt() != VERSION) throw IOException("Unsupported voice profile version")
-        val count = input.readInt()
-        val dim = input.readInt()
-        if (count !in 1..MAX_COUNT || dim !in 1..MAX_DIM) throw IOException("Corrupt voice profile")
-        if (file.length() != 16L + 4L * count * dim) throw IOException("Corrupt voice profile")
-        return VoiceProfile(List(count) { FloatArray(dim) { input.readFloat() } })
+        val profile = read(input)
+        if (input.read() != -1) throw IOException("Corrupt voice profile")
+        return profile
       }
+    }
+
+    /** Reads what [write] wrote; throws [IOException] if it is corrupt or truncated. */
+    fun read(input: DataInputStream): VoiceProfile {
+      if (input.readInt() != MAGIC) throw IOException("Not a voice profile")
+      if (input.readInt() != VERSION) throw IOException("Unsupported voice profile version")
+      val count = input.readInt()
+      val dim = input.readInt()
+      if (count !in 1..MAX_COUNT || dim !in 1..MAX_DIM) throw IOException("Corrupt voice profile")
+      return VoiceProfile(List(count) { FloatArray(dim) { input.readFloat() } })
     }
 
     fun normalize(v: FloatArray): FloatArray {

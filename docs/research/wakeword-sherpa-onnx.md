@@ -1,5 +1,9 @@
 # On-device wake phrase + voice match: sherpa-onnx (research, 2026-11-07)
 
+> **Superseded for phrase detection** by [wakeword-query-by-example.md](wakeword-query-by-example.md):
+> the phoneme keyword spotter below missed most of the owner's real takes. sherpa-onnx is still
+> used for the CAM++ voice match.
+
 **Choice: sherpa-onnx v2.0.1** (k2-fsa, Apache-2.0, released 2026-10-26).
 
 **Rejected alternatives:**

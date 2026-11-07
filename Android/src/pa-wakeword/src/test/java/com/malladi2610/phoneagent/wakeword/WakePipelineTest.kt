@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class WakePipelineTest {
-  private class FakeDetector : KeywordDetector {
+  private class FakeDetector : PhraseDetector {
     var hitNext = false
     var resets = 0
     var accepted = 0
