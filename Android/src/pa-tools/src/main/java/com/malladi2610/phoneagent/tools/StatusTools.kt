@@ -1,5 +1,8 @@
 package com.malladi2610.phoneagent.tools
 
+import com.malladi2610.phoneagent.tools.util.BatteryState
+import android.content.IntentFilter
+import android.content.Intent
 import android.app.NotificationManager
 import android.content.Context
 import android.media.AudioManager
@@ -35,7 +38,15 @@ internal class GetDeviceStatusTool(context: Context) : BasePhoneTool(context) {
         section("battery") {
           val bm = context.getSystemService(BatteryManager::class.java)
           put("percent", bm.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY))
-          put("charging", bm.isCharging)
+          val sticky = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+          val state =
+            BatteryState.from(
+              status = sticky?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1,
+              plugged = sticky?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0,
+              isChargingApi = bm.isCharging,
+            )
+          put("charging", state.charging)
+          put("power_source", state.powerSource)
         }
         section("network") {
           val cm = context.getSystemService(ConnectivityManager::class.java)
