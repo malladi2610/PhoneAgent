@@ -2,4 +2,5 @@
 <resources>
   <string name="pa_voice_service_label">PhoneAgent</string>
   <string name="pa_voice_setup_label">PhoneAgent voice &amp; assistant</string>
+  <string name="pa_talk_label">Talk to PhoneAgent</string>
 </resources>

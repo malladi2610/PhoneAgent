@@ -1,7 +1,10 @@
 package com.google.ai.edge.gallery.phoneagent.settings
 
+import android.app.StatusBarManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -63,6 +66,7 @@ class PhoneAgentSettingsActivity : ComponentActivity() {
     const val MAIN_ACTIVITY = "com.google.ai.edge.gallery.MainActivity"
     const val PERMISSIONS_ACTIVITY = "com.malladi2610.phoneagent.tools.PermissionsActivity"
     const val VOICE_SETUP_ACTIVITY = "com.malladi2610.phoneagent.voice.VoiceSetupActivity"
+    const val TALK_TILE_SERVICE = "com.malladi2610.phoneagent.voice.TalkTileService"
     const val WAKE_ENROLLMENT_ACTIVITY = "com.malladi2610.phoneagent.wakeword.WakeEnrollmentActivity"
   }
 }
@@ -82,6 +86,23 @@ private fun openByClassName(context: Context, className: String): Boolean {
   val intent = Intent().setClassName(context, className)
   if (intent.resolveActivity(context.packageManager) == null) return false
   return runCatching { context.startActivity(intent) }.isSuccess
+}
+
+/** Asks the system to add the Talk tile to Quick Settings (shows the system's own prompt). */
+private fun addTalkTile(context: Context): String {
+  val component = ComponentName(context, PhoneAgentSettingsActivity.TALK_TILE_SERVICE)
+  return runCatching {
+      context
+        .getSystemService(StatusBarManager::class.java)
+        .requestAddTileService(
+          component,
+          "Talk to PhoneAgent",
+          Icon.createWithResource(context, android.R.drawable.ic_btn_speak_now),
+          context.mainExecutor,
+        ) {}
+      ""
+    }
+    .getOrElse { "Couldn't add the tile; add it by editing Quick Settings." }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -291,6 +312,9 @@ private fun OtherSetupSection() {
   Link("Phone permissions", PhoneAgentSettingsActivity.PERMISSIONS_ACTIVITY)
   Link("Voice & assistant", PhoneAgentSettingsActivity.VOICE_SETUP_ACTIVITY)
   Link("Wake phrase", PhoneAgentSettingsActivity.WAKE_ENROLLMENT_ACTIVITY)
+  OutlinedButton(onClick = { message = addTalkTile(context) }, modifier = Modifier.fillMaxWidth()) {
+    Text("Add “Talk to PhoneAgent” to Quick Settings")
+  }
   if (message.isNotEmpty()) Text(message, style = MaterialTheme.typography.bodySmall)
   Text(" ", modifier = Modifier.padding(bottom = 24.dp))
 }
