@@ -20,3 +20,5 @@ The `upstream` remote can only fetch: its push URL is set to `no-push-to-upstrea
 |---|---|
 | `Android/src/app/build.gradle.kts` | `applicationId = "com.malladi2610.phoneagent"` |
 | `Android/src/app/src/main/res/values/strings.xml` | `app_name` = "PhoneAgent" |
+| `Android/src/settings.gradle.kts` | `pa` version catalog (`gradle/pa.versions.toml`) + `include(":pa-core", ":pa-tools", ":pa-voice", ":pa-wakeword")` |
+| `Android/src/app/build.gradle.kts` | `implementation(project(":pa-*"))` for the four modules |

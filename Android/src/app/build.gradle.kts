@@ -77,6 +77,11 @@ kotlin {
 }
 
 dependencies {
+  // PhoneAgent modules (see UPSTREAM.md).
+  implementation(project(":pa-core"))
+  implementation(project(":pa-tools"))
+  implementation(project(":pa-voice"))
+  implementation(project(":pa-wakeword"))
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.activity.compose)

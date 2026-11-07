@@ -36,6 +36,8 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
+  // PhoneAgent: separate version catalog for our modules (see UPSTREAM.md).
+  versionCatalogs { create("pa") { from(files("gradle/pa.versions.toml")) } }
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
   repositories {
     //        mavenLocal()
@@ -47,3 +49,6 @@ dependencyResolutionManagement {
 rootProject.name = "AI Edge Gallery"
 
 include(":app")
+
+// PhoneAgent modules (see UPSTREAM.md).
+include(":pa-core", ":pa-tools", ":pa-voice", ":pa-wakeword")
