@@ -142,6 +142,7 @@ private fun OllamaSection() {
     busy = true
     scope.launch {
       try {
+        client.verifyKey() // /api/tags alone accepts any key; this one authenticates.
         val names = client.listModels()
         models = names
         onResult(names)

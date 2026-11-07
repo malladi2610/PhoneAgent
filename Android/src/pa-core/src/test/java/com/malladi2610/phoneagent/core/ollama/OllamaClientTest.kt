@@ -167,4 +167,28 @@ class OllamaClientTest {
   fun defaultBaseUrl_isOllamaCom() {
     assertEquals("https://ollama.com", OllamaClient.DEFAULT_BASE_URL)
   }
+
+  @Test
+  fun keyWithPastedLineBreak_isSentWithoutWhitespace() = runTest {
+    currentKey = "sk-test\n0123 456789"
+    server.enqueue(MockResponse().setResponseCode(200).setBody("""{"models":[]}"""))
+    client().listModels()
+    assertEquals("Bearer sk-test0123456789", server.takeRequest().getHeader("Authorization"))
+  }
+
+  @Test
+  fun verifyKey_postsToApiMe_withBearer() = runTest {
+    server.enqueue(MockResponse().setResponseCode(200).setBody("""{"name":"someone"}"""))
+    client().verifyKey()
+    val req = server.takeRequest()
+    assertEquals("POST", req.method)
+    assertEquals("/api/me", req.path)
+    assertEquals("Bearer $key", req.getHeader("Authorization"))
+  }
+
+  @Test
+  fun verifyKey_401_throwsUnauthorized() = runTest {
+    server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"invalid credentials"}"""))
+    assertThrowsAgentError<AgentError.Unauthorized> { client().verifyKey() }
+  }
 }

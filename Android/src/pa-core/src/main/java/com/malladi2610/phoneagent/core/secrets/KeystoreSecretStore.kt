@@ -35,7 +35,8 @@ class KeystoreSecretStore(context: Context) : SecretStore {
         getOrCreateKey(),
         GCMParameterSpec(TAG_BITS, Base64.getDecoder().decode(ivB64)),
       )
-      String(cipher.doFinal(Base64.getDecoder().decode(ctB64)), Charsets.UTF_8)
+      // Normalizing on read also repairs keys saved before normalization existed.
+      ApiKeys.normalize(String(cipher.doFinal(Base64.getDecoder().decode(ctB64)), Charsets.UTF_8))
     } catch (e: Exception) {
       Log.w(TAG, "Dropping unreadable secret ${key.name} (${e::class.java.simpleName})")
       prefs.edit().remove(key.name).apply()
@@ -47,7 +48,7 @@ class KeystoreSecretStore(context: Context) : SecretStore {
   override fun put(key: SecretKey, value: String) {
     val cipher = Cipher.getInstance(TRANSFORMATION)
     cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
-    val ct = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+    val ct = cipher.doFinal(ApiKeys.normalize(value).toByteArray(Charsets.UTF_8))
     val encoded =
       Base64.getEncoder().encodeToString(cipher.iv) + ":" + Base64.getEncoder().encodeToString(ct)
     prefs.edit().putString(key.name, encoded).apply()

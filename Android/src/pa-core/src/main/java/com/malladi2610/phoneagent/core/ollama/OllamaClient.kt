@@ -2,7 +2,9 @@ package com.malladi2610.phoneagent.core.ollama
 
 import com.malladi2610.phoneagent.core.agent.AgentError
 import com.malladi2610.phoneagent.core.agent.ChatMessage
+import com.malladi2610.phoneagent.core.secrets.ApiKeys
 import com.malladi2610.phoneagent.core.tool.ToolSpec
+import android.util.Log
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -82,8 +84,33 @@ class OllamaClient(
       .map { it.name }
   }
 
-  private fun requireKey(): String =
-    keyProvider()?.trim()?.takeIf { it.isNotEmpty() } ?: throw AgentError.MissingKey(SERVICE)
+  /**
+   * Checks the key against an endpoint that actually authenticates (`POST /api/me`).
+   * `/api/tags` is public and succeeds with any key, so it can't validate one.
+   */
+  suspend fun verifyKey() {
+    val key = requireKey()
+    val request =
+      Request.Builder()
+        .url("${baseUrl.trimEnd('/')}/api/me")
+        .header("Authorization", "Bearer $key")
+        .post(ByteArray(0).toRequestBody(null))
+        .build()
+    send(request)
+  }
+
+  private fun requireKey(): String {
+    val key =
+      keyProvider()?.let(ApiKeys::normalize)?.takeIf { it.isNotEmpty() }
+        ?: throw AgentError.MissingKey(SERVICE)
+    // Diagnostics: only the key's shape, never its value.
+    Log.d(
+      TAG,
+      "key shape: length=${key.length} hasWhitespace=${key.any { it.isWhitespace() }} " +
+        "looksLikeSshKey=${key.startsWith("ssh-")} dots=${key.count { it == '.' }}",
+    )
+    return key
+  }
 
   private inline fun <T> decode(block: () -> T): T =
     try {
@@ -105,8 +132,12 @@ class OllamaClient(
         } catch (e: IOException) {
           throw AgentError.Network(SERVICE)
         }
+      if (code in 200..299) return body
+      Log.w(
+        TAG,
+        "HTTP $code ${request.method} ${request.url.encodedPath} body=${body.take(300).replace('\n', ' ')}",
+      )
       when {
-        code in 200..299 -> return body
         code == 401 || code == 403 -> throw AgentError.Unauthorized(SERVICE)
         code == 402 -> throw AgentError.QuotaExceeded(SERVICE)
         code == 429 -> throw AgentError.RateLimited(SERVICE)
@@ -143,6 +174,7 @@ class OllamaClient(
   companion object {
     const val DEFAULT_BASE_URL = "https://ollama.com"
     const val SERVICE = "Ollama"
+    private const val TAG = "PaOllama"
     private const val TIMEOUT_SECONDS = 60L
     private val JSON = "application/json; charset=utf-8".toMediaType()
   }
