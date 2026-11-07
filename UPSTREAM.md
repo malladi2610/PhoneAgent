@@ -23,6 +23,8 @@ The `upstream` remote can only fetch: its push URL is set to `no-push-to-upstrea
 | `Android/src/app/src/main/res/values/strings.xml` | `app_name` = "PhoneAgent" |
 | `Android/src/settings.gradle.kts` | `pa` version catalog (`gradle/pa.versions.toml`) + `include(":pa-core", ":pa-tools", ":pa-voice", ":pa-wakeword")` |
 | `Android/src/app/build.gradle.kts` | `implementation(project(":pa-*"))` for the four modules |
+| `Android/src/app/src/main/java/com/google/ai/edge/gallery/GalleryApplication.kt` | (Integration) one line in `onCreate`: `PhoneAgentGraph.install(this)` |
+| `Android/src/app/build.gradle.kts` | (Integration) `androidResources { noCompress += listOf("onnx") }` for wake-word models |
 | `Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AgentTools.kt` | Track B: `phoneToolsBridge` (lazy `PhoneToolsGalleryBridge.create(context)`) appended to `getAvailableTools()` so it gets `onAttach`; `getLiteRtToolProviders()` override = other tools via `tool(it)` + `phoneToolsBridge.providers()` |
 | `Android/src/app/src/main/java/com/google/ai/edge/gallery/tools/ToolAction.kt` | Track B: `ToolActionName.CONFIRM_PHONE_TOOL` + `ConfirmToolCallAction(toolName, summary, result: CompletableDeferred<Boolean>)` |
 | `Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AgentChatScreen.kt` | Track B: `currentPhoneConfirmAction` state, `is ConfirmToolCallAction` branch in the action loop, and `PhoneToolConfirmDialog` (Allow/Deny) render block after the MCP dialog |

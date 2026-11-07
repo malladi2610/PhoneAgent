@@ -67,6 +67,8 @@ android {
     buildConfig = true
   }
   packaging { jniLibs { pickFirsts.add("**/liblitertlm_jni.so") } }
+  // PhoneAgent: keep wake-word models uncompressed so sherpa-onnx can load them directly.
+  androidResources { noCompress += listOf("onnx") }
 }
 
 kotlin {
