@@ -21,6 +21,7 @@ package com.google.ai.edge.gallery.ui.common
 // import com.google.ai.edge.gallery.ui.preview.TASK_TEST1
 // import com.google.ai.edge.gallery.ui.theme.GalleryTheme
 
+import com.google.ai.edge.gallery.phoneagent.isOllamaCloud
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -118,7 +119,7 @@ fun ModelPicker(
             model.displayName.ifEmpty { model.name },
             style = MaterialTheme.typography.bodyMedium,
           )
-          if (!model.isAiCore) {
+          if (!model.isAiCore && !model.isOllamaCloud) {
             Row(
               horizontalArrangement = Arrangement.spacedBy(4.dp),
               verticalAlignment = Alignment.CenterVertically,

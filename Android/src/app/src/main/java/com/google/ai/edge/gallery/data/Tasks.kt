@@ -16,6 +16,7 @@
 
 package com.google.ai.edge.gallery.data
 
+import com.google.ai.edge.gallery.phoneagent.isOllamaCloud
 import androidx.annotation.StringRes
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.mutableLongStateOf
@@ -154,7 +155,7 @@ data class Task(
    * non-AICore model (`!model.isAiCore`), and the global feature flag.
    */
   fun isContextCompactSupported(model: Model): Boolean =
-    supportContextCompact && !model.isAiCore && Config.isContextCompactEnabled()
+    supportContextCompact && !model.isAiCore && !model.isOllamaCloud && Config.isContextCompactEnabled()
 
   /** Whether this task supports speech input (ASR) in its audio settings. */
   val supportsSpeechInput: Boolean

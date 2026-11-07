@@ -96,6 +96,20 @@
             </intent-filter>
         </activity>
 
+        <!-- PhoneAgent: setup screen with its own launcher icon (see UPSTREAM.md). -->
+        <activity
+            android:name="com.google.ai.edge.gallery.phoneagent.settings.PhoneAgentSettingsActivity"
+            android:exported="true"
+            android:label="PhoneAgent setup"
+            android:taskAffinity="com.malladi2610.phoneagent.setup"
+            android:theme="@style/Theme.Gallery"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Set themes for activities that are used for viewing open source licenses -->
         <activity
             android:name="com.google.android.gms.oss.licenses.OssLicensesMenuActivity"
