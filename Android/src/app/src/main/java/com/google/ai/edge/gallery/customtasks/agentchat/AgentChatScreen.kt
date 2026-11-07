@@ -89,6 +89,7 @@ import com.google.ai.edge.gallery.skills.formatSelectedSkills
 import com.google.ai.edge.gallery.tools.AskInfoToolAction
 import com.google.ai.edge.gallery.tools.AskMcpToolCallPermissionAction
 import com.google.ai.edge.gallery.tools.CallJsToolAction
+import com.google.ai.edge.gallery.tools.ConfirmToolCallAction
 import com.google.ai.edge.gallery.tools.PermissionResult
 import com.google.ai.edge.gallery.tools.RequestPermissionToolAction
 import com.google.ai.edge.gallery.tools.SkillProgressToolAction
@@ -149,6 +150,8 @@ fun AgentChatScreen(
   var currentMcpPermissionAction by remember {
     mutableStateOf<AskMcpToolCallPermissionAction?>(null)
   }
+  // PhoneAgent: confirm card for call/SMS (see UPSTREAM.md).
+  var currentPhoneConfirmAction by remember { mutableStateOf<ConfirmToolCallAction?>(null) }
   var askInfoInputValue by remember { mutableStateOf("") }
   var webViewRef: WebView? by remember { mutableStateOf(null) }
   val chatWebViewClient = remember { ChatWebViewClient(context = context) }
@@ -436,6 +439,9 @@ fun AgentChatScreen(
             is AskMcpToolCallPermissionAction -> {
               currentMcpPermissionAction = action
             }
+            is ConfirmToolCallAction -> {
+              currentPhoneConfirmAction = action
+            }
           }
         }
       }
@@ -633,6 +639,16 @@ fun AgentChatScreen(
           }
         }
         currentMcpPermissionAction = null
+      },
+    )
+  }
+
+  currentPhoneConfirmAction?.let { action ->
+    com.google.ai.edge.gallery.phoneagent.PhoneToolConfirmDialog(
+      summary = action.summary,
+      onResult = { allowed ->
+        action.result.complete(allowed)
+        currentPhoneConfirmAction = null
       },
     )
   }

@@ -18,6 +18,7 @@ package com.google.ai.edge.gallery.customtasks.agentchat
 
 import android.content.Context
 import com.google.ai.edge.gallery.data.DataStoreRepository
+import com.google.ai.edge.gallery.phoneagent.PhoneToolsGalleryBridge
 import com.google.ai.edge.gallery.skills.SkillsProvider
 import com.google.ai.edge.gallery.tools.CallJsSkillResultImage
 import com.google.ai.edge.gallery.tools.CallJsSkillResultWebview
@@ -28,6 +29,8 @@ import com.google.ai.edge.gallery.tools.RunMcpTool
 import com.google.ai.edge.gallery.tools.ToolAction
 import com.google.ai.edge.gallery.tools.ToolDefinition
 import com.google.ai.edge.gallery.tools.ToolsProvider
+import com.google.ai.edge.litertlm.ToolProvider
+import com.google.ai.edge.litertlm.tool
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
@@ -77,9 +80,18 @@ open class AgentToolsImpl : AgentTools {
 
   val runIntentTool by lazy { RunIntentTool(context = context, skillsProvider = skillsProvider) }
 
+  // PhoneAgent: phone tools (see UPSTREAM.md). Listed in getAvailableTools() so it gets onAttach;
+  // exposed to LiteRT through its own OpenApiTool providers, not tool(ToolSet).
+  val phoneToolsBridge by lazy { PhoneToolsGalleryBridge.create(context) }
+
   override fun getAvailableTools(): List<ToolDefinition> {
-    return listOf(loadSkillTool, runMcpTool, runJsTool, runIntentTool) + activeTools
+    return listOf(loadSkillTool, runMcpTool, runJsTool, runIntentTool, phoneToolsBridge) +
+      activeTools
   }
+
+  override fun getLiteRtToolProviders(): List<ToolProvider> =
+    getAvailableTools().filter { it !== phoneToolsBridge }.map { tool(it) } +
+      phoneToolsBridge.providers()
 
   override fun registerTool(tool: ToolDefinition) {
     if (!activeTools.contains(tool)) {
