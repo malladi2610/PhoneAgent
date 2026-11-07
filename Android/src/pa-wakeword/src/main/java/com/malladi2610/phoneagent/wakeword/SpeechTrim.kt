@@ -3,7 +3,7 @@ package com.malladi2610.phoneagent.wakeword
 import kotlin.math.sqrt
 
 /**
- * Cuts the audio window around a keyword hit down to the loud part ± [PAD_SECONDS], so the speaker
+ * Cuts the audio window around a phrase hit down to the loud part ± [PAD_SECONDS], so the speaker
  * embedding is computed mostly on the phrase. Same function for enrollment and runtime, so both
  * embeddings see comparable windows. Conservative: when it can't find a clear speech region it
  * returns the input unchanged.

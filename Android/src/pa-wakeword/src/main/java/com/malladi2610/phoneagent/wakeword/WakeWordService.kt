@@ -18,8 +18,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Foreground service (type microphone) that listens for the enrolled wake phrase.
  *
- * Pipeline on one background thread: AudioRecord in 100 ms chunks → sherpa KWS → 2.5 s ring
- * buffer → on a hit, CAM++ embedding + voice match ([WakePipeline]/[WakeGate]). On a match the mic
+ * Pipeline on one background thread: AudioRecord in 80 ms chunks → speech embeddings (openWakeWord
+ * feature models on LiteRT) → query-by-example match against the enrolled takes ([QbeDetector]) and
+ * a 2.5 s ring buffer → on a hit, CAM++ embedding + voice match ([WakePipeline]/[WakeGate]). On a match the mic
  * is released first, then `PhoneAgentBus.voiceTurnLauncher.startVoiceTurn(WAKE_PHRASE)` runs on the
  * main thread. While `PhoneAgentBus.voiceSessionActive` is true the mic stays closed; listening
  * resumes 2 s after it goes back to false.
@@ -121,19 +122,26 @@ class WakeWordService : Service() {
     val handoffFailed = AtomicBoolean(false)
 
     override fun run() {
-      val engine =
+      val features =
         try {
-          WakeWordEngine.create(this@WakeWordService)
+          TfliteFeatureModels.create(this@WakeWordService)
         } catch (e: WakeWordUnavailableException) {
-          Log.e(TAG, "Wake-word engine unavailable", e)
-          if (!stopped) main.post { if (worker === this) fail("Wake phrase unavailable") }
+          unavailable(e)
           return
         }
-      var detector: KeywordDetector? = null
+      val speaker =
+        try {
+          SpeakerEngine.create(this@WakeWordService)
+        } catch (e: WakeWordUnavailableException) {
+          features.close()
+          unavailable(e)
+          return
+        }
       var mic: MicCapture? = null
       try {
-        detector = engine.newDetector(enrollment.keywordLine)
-        val pipeline = WakePipeline(detector, engine, enrollment.profile)
+        val detector =
+          QbeDetector(SpeechEmbeddingStream(features), PhraseMatcher(enrollment.templates), enrollment.threshold)
+        val pipeline = WakePipeline(detector, speaker, enrollment.profile)
         var sessionActive = PhoneAgentBus.voiceSessionActive.value
         pipeline.onVoiceSessionActive(sessionActive, now())
         var micFailures = 0
@@ -181,13 +189,21 @@ class WakeWordService : Service() {
           micFailures = 0
           when (val event = pipeline.onAudio(chunk, now())) {
             is WakePipeline.Event.Triggered -> {
-              Log.i(TAG, "Wake phrase matched (score ${fmt(event.score)} ≥ ${fmt(pipeline.threshold)})")
+              Log.i(
+                TAG,
+                "Wake phrase matched (phrase ${fmt3(detector.lastCost)} ≤ ${fmt3(detector.threshold)}, " +
+                  "voice ${fmt(event.score)} ≥ ${fmt(pipeline.threshold)})",
+              )
               mic.close() // release the mic before the voice turn opens its own
               mic = null
               main.post { if (worker === this) launchVoiceTurn(this) }
             }
             is WakePipeline.Event.Rejected ->
-              Log.i(TAG, "Wake phrase heard, voice did not match (score ${event.score?.let(::fmt)})")
+              Log.i(
+                TAG,
+                "Wake phrase heard (${fmt3(detector.lastCost)}), voice did not match " +
+                  "(score ${event.score?.let(::fmt)} < ${fmt(pipeline.threshold)})",
+              )
             else -> Unit
           }
         }
@@ -200,9 +216,14 @@ class WakeWordService : Service() {
         main.post { if (worker === this) fail("Wake phrase stopped after an error") }
       } finally {
         mic?.close()
-        detector?.close()
-        engine.close()
+        features.close()
+        speaker.close()
       }
+    }
+
+    private fun unavailable(e: WakeWordUnavailableException) {
+      Log.e(TAG, "Wake-phrase models unavailable", e)
+      if (!stopped) main.post { if (worker === this) fail("Wake phrase unavailable") }
     }
 
     private fun now() = SystemClock.elapsedRealtime()
@@ -220,5 +241,7 @@ class WakeWordService : Service() {
       private set
 
     private fun fmt(v: Float) = String.format(Locale.ROOT, "%.2f", v)
+
+    private fun fmt3(v: Float) = String.format(Locale.ROOT, "%.3f", v)
   }
 }

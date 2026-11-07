@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,6 +39,8 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -50,15 +53,19 @@ import androidx.lifecycle.viewModelScope
 import com.malladi2610.phoneagent.core.settings.PaSettings
 import java.io.IOException
 import java.util.Locale
+import kotlin.concurrent.thread
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Wake-phrase setup: choose a phrase (checked against the lexicon), record 5 takes for voice
- * match, test live hits and scores, enable the always-listening service, and lift battery limits.
+ * Wake-phrase setup: type any phrase, record [EnrollmentLogic.TAKES] takes (the mic opens at once;
+ * models load meanwhile; each take is cut by energy endpointing), check the takes agree, learn the
+ * phrase templates + voice profile, test live match costs and voice scores, enable the
+ * always-listening service, and lift battery limits.
  */
 class WakeEnrollmentActivity : ComponentActivity() {
   private val model: WakeEnrollmentViewModel by viewModels()
@@ -128,11 +135,53 @@ class WakeEnrollmentActivity : ComponentActivity() {
   }
 }
 
+/** Loads a native model on its own thread so the mic can open right away; closes it if discarded. */
+private class BackgroundLoad<T : java.io.Closeable>(name: String, load: () -> T) {
+  private val lock = Object()
+  private var result: Result<T>? = null
+  private var discarded = false
+
+  init {
+    thread(name = name, isDaemon = true) {
+      val r = runCatching(load)
+      synchronized(lock) {
+        if (discarded) {
+          r.getOrNull()?.close()
+        } else {
+          result = r
+        }
+        lock.notifyAll()
+      }
+    }
+  }
+
+  /** Waits (cancellably) for the model; rethrows the loading error. */
+  suspend fun await(): T {
+    while (true) {
+      currentCoroutineContext().ensureActive()
+      synchronized(lock) {
+        result?.let { return it.getOrThrow() }
+        lock.wait(50)
+      }
+    }
+  }
+
+  fun isReadyOrFailed(): Boolean = synchronized(lock) { result != null }
+
+  fun close() {
+    synchronized(lock) {
+      discarded = true
+      result?.getOrNull()?.close()
+      result = null
+    }
+  }
+}
+
 internal class WakeEnrollmentViewModel(app: Application) : AndroidViewModel(app) {
   enum class Mode {
     IDLE,
-    LOADING,
-    ENROLLING,
+    RECORDING,
+    ANALYZING,
     TESTING,
   }
 
@@ -141,10 +190,17 @@ internal class WakeEnrollmentViewModel(app: Application) : AndroidViewModel(app)
   var phrase by mutableStateOf(WakeWord.enrolledPhrase(app) ?: DEFAULT_PHRASE)
   var phraseError by mutableStateOf<String?>(null)
   var mode by mutableStateOf(Mode.IDLE)
-  var takes by mutableStateOf(0)
+  var takes by mutableIntStateOf(0)
   var status by mutableStateOf<String?>(null)
+  /** Non-blocking advice about the input level ("too loud", "too quiet"). */
+  var hint by mutableStateOf<String?>(null)
+  /** Live input level (dBFS) while the mic is open. */
+  var levelDb by mutableFloatStateOf(Endpointer.SILENCE_DB)
   var enrolledPhrase by mutableStateOf<String?>(null)
-  var threshold by mutableStateOf<Float?>(null)
+  var matchThreshold by mutableStateOf<Float?>(null)
+  var voiceThreshold by mutableStateOf<Float?>(null)
+  /** Test mode: match cost of the last utterance (lower = closer to the enrolled phrase). */
+  var testCost by mutableStateOf<Float?>(null)
   var enabled by mutableStateOf(settings.wakeWordEnabled)
   var running by mutableStateOf(WakeWord.isRunning)
   var batteryUnrestricted by mutableStateOf(false)
@@ -161,7 +217,8 @@ internal class WakeEnrollmentViewModel(app: Application) : AndroidViewModel(app)
     val app = getApplication<Application>()
     val enrollment = WakeWordStore.load(app)
     enrolledPhrase = enrollment?.phrase
-    threshold = enrollment?.profile?.threshold()
+    matchThreshold = enrollment?.threshold
+    voiceThreshold = enrollment?.profile?.threshold()
     enabled = settings.wakeWordEnabled
     running = WakeWord.isRunning
     batteryUnrestricted =
@@ -175,64 +232,216 @@ internal class WakeEnrollmentViewModel(app: Application) : AndroidViewModel(app)
 
   fun enroll() {
     if (job?.isActive == true) return
+    val typed = phrase.trim()
+    EnrollmentLogic.phraseError(typed)?.let {
+      phraseError = it
+      return
+    }
     job =
       viewModelScope.launch {
-        mode = Mode.LOADING
-        status = "Checking the phrase…"
-        val typed = phrase.trim()
-        val keywordLine =
-          encode(typed).getOrElse {
-            phraseError = it.message
-            status = null
-            mode = Mode.IDLE
-            return@launch
-          }
-        val embeddings = mutableListOf<FloatArray>()
+        val app = getApplication<Application>()
+        WakeWord.stop(app)
+        mode = Mode.RECORDING
         takes = 0
-        runCapture(keywordLine, Mode.ENROLLING, "Say “$typed” ($TAKES times)") { embedding ->
-          if (embedding == null) {
-            status = "That one was too short, say it again."
-            return@runCapture true
-          }
-          embeddings += embedding
-          takes = embeddings.size
-          status = if (takes < TAKES) "Got it. Again (${takes + 1} of $TAKES)." else "Saving…"
-          takes < TAKES
+        hint = null
+        testLog.clear()
+        status = "Say “$typed”, then pause (1 of ${EnrollmentLogic.TAKES})."
+        val features = BackgroundLoad("pa-wake-features") { TfliteFeatureModels.create(app) }
+        val speaker = BackgroundLoad("pa-wake-speaker") { SpeakerEngine.create(app) }
+        try {
+          withContext(Dispatchers.IO) { MicCapture.open().use { mic -> record(mic, typed, features, speaker) } }
+        } catch (e: WakeWordUnavailableException) {
+          status = "Wake phrase isn't available on this device: ${e.message}"
+        } catch (e: IOException) {
+          status = e.message ?: "Microphone unavailable."
+        } catch (e: SecurityException) {
+          status = "Microphone permission is needed for the wake phrase."
+        } finally {
+          features.close()
+          speaker.close()
+          finishCapture()
         }
-        if (embeddings.size == TAKES) {
-          val profile = VoiceProfile(embeddings).withoutOutliers()
-          withContext(Dispatchers.IO) {
-            WakeWordStore.save(getApplication(), Enrollment(typed, keywordLine, profile))
-          }
-          status =
-            "Enrolled “$typed”. Kept ${profile.size} of $TAKES takes; " +
-              "voice-match threshold ${fmt(profile.threshold())}."
-        }
-        refresh()
       }
+  }
+
+  /** Runs on the IO dispatcher with the mic open; returns when enrolled, failed or cancelled. */
+  private suspend fun record(
+    mic: MicCapture,
+    typed: String,
+    features: BackgroundLoad<TfliteFeatureModels>,
+    speaker: BackgroundLoad<SpeakerEngine>,
+  ) {
+    val recorder = EnrollmentLogic.TakeRecorder()
+    val collected = mutableListOf<EnrollmentLogic.TakeAudio>()
+    var redos = 0
+    var loudUntil = 0L
+    var frames = 0L
+    while (true) {
+      currentCoroutineContext().ensureActive()
+      val chunk = mic.read() ?: throw IOException("The microphone stopped delivering audio.")
+      if (chunk.isEmpty()) continue
+      frames++
+      val results = recorder.accept(chunk)
+      val level = Endpointer.levelDb(chunk)
+      val clippedNow = Endpointer.clippedFraction(chunk) > 0f
+      if (clippedNow) loudUntil = frames + LOUD_HINT_FRAMES
+      var analyse = false
+      withContext(Dispatchers.Main) {
+        levelDb = level
+        if (frames < loudUntil) hint = LOUD_HINT else if (hint == LOUD_HINT) hint = null
+        for (r in results) {
+          when (r) {
+            EnrollmentLogic.TakeResult.Ignored -> Unit
+            is EnrollmentLogic.TakeResult.Rejected -> status = "${r.message} Say “$typed” again."
+            is EnrollmentLogic.TakeResult.Accepted -> {
+              collected += r.take
+              takes = collected.size
+              r.hint?.let { hint = it }
+              if (collected.size < EnrollmentLogic.TAKES) {
+                status = "Got it. Again (${collected.size + 1} of ${EnrollmentLogic.TAKES})."
+              } else {
+                analyse = true
+              }
+            }
+          }
+        }
+      }
+      if (!analyse) continue
+
+      withContext(Dispatchers.Main) {
+        mode = Mode.ANALYZING
+        status = "Checking your takes…"
+      }
+      val models = features.await()
+      val outcome =
+        EnrollmentLogic.build(typed, collected, models, speaker.await(), allowRedo = redos < EnrollmentLogic.MAX_REDOS)
+      when (outcome) {
+        is EnrollmentLogic.Outcome.Redo -> {
+          redos++
+          collected.removeAt(outcome.index)
+          recorder.reset() // drop audio that piled up while analysing
+          withContext(Dispatchers.Main) {
+            takes = collected.size
+            mode = Mode.RECORDING
+            status = "Take ${outcome.index + 1} didn't sound like the others. Say “$typed” once more."
+          }
+        }
+        is EnrollmentLogic.Outcome.Failed -> {
+          withContext(Dispatchers.Main) { status = outcome.message }
+          return
+        }
+        is EnrollmentLogic.Outcome.Done -> {
+          WakeWordStore.save(getApplication(), outcome.enrollment)
+          val e = outcome.enrollment
+          withContext(Dispatchers.Main) {
+            status =
+              "Enrolled “${e.phrase}” from ${outcome.keptTakes} takes. Match threshold ${fmt3(e.threshold)} " +
+                "(takes scored ${outcome.loo.joinToString { fmt3(it) }}); voice threshold ${fmt(e.profile.threshold())}."
+            hint = null
+          }
+          Log.i(TAG, "Enrolled: threshold ${e.threshold}, LOO ${outcome.loo.joinToString()}, voice ${e.profile.threshold()}")
+          return
+        }
+      }
+    }
   }
 
   fun test() {
     if (job?.isActive == true) return
     val enrollment = WakeWordStore.load(getApplication()) ?: return
-    val threshold = enrollment.profile.threshold()
+    val voiceThreshold = enrollment.profile.threshold()
     testLog.clear()
     job =
       viewModelScope.launch {
-        runCapture(enrollment.keywordLine, Mode.TESTING, "Say “${enrollment.phrase}”…") { embedding ->
-          val line =
-            if (embedding == null) {
-              "Phrase heard · too short to match the voice"
-            } else {
-              val score = enrollment.profile.score(embedding)
-              val verdict = if (score >= threshold) "would wake" else "ignored (voice didn't match)"
-              "Phrase heard · voice ${fmt(score)} vs ${fmt(threshold)} → $verdict"
+        val app = getApplication<Application>()
+        WakeWord.stop(app)
+        mode = Mode.TESTING
+        hint = null
+        testCost = null
+        status = "Say “${enrollment.phrase}”…"
+        val features = BackgroundLoad("pa-wake-features") { TfliteFeatureModels.create(app) }
+        val speaker = BackgroundLoad("pa-wake-speaker") { SpeakerEngine.create(app) }
+        try {
+          withContext(Dispatchers.IO) {
+            MicCapture.open().use { mic ->
+              val ring = RingBuffer((WakePipeline.WINDOW_SECONDS * WakePipeline.SAMPLE_RATE).toInt())
+              val waiting = mutableListOf<FloatArray>() // audio heard while the models load
+              var detector: QbeDetector? = null
+              var seen = 0
+              while (true) {
+                currentCoroutineContext().ensureActive()
+                val chunk = mic.read() ?: throw IOException("The microphone stopped delivering audio.")
+                if (chunk.isEmpty()) continue
+                ring.write(chunk)
+                val level = Endpointer.levelDb(chunk)
+                var hit = false
+                val d = detector
+                if (d != null) {
+                  hit = d.accept(chunk)
+                } else {
+                  waiting += chunk
+                  if (features.isReadyOrFailed()) {
+                    val created =
+                      QbeDetector(SpeechEmbeddingStream(features.await()), PhraseMatcher(enrollment.templates), enrollment.threshold)
+                    for (c in waiting) hit = created.accept(c) || hit
+                    waiting.clear()
+                    detector = created
+                  }
+                }
+                val utterances = detector?.utterances ?: 0
+                val cost = detector?.lastCost
+                val line =
+                  when {
+                    hit -> {
+                      val embedding = speaker.await().embed(SpeechTrim.trim(ring.snapshot(), WakePipeline.SAMPLE_RATE))
+                      ring.clear()
+                      if (embedding == null) {
+                        "Phrase heard (match ${fmt3(cost!!)}) · too short to check the voice"
+                      } else {
+                        val score = enrollment.profile.score(embedding)
+                        val verdict = if (score >= voiceThreshold) "would wake" else "ignored (voice didn't match)"
+                        "Phrase heard (match ${fmt3(cost!!)} ≤ ${fmt3(enrollment.threshold)}) · voice ${fmt(score)} " +
+                          "vs ${fmt(voiceThreshold)} → $verdict"
+                      }
+                    }
+                    utterances > seen && cost != null ->
+                      if (cost.isFinite()) "Not the phrase (match ${fmt3(cost)} > ${fmt3(enrollment.threshold)})"
+                      else "Not the phrase (length too different)"
+                    else -> null
+                  }
+                val newUtterance = utterances > seen
+                seen = utterances
+                withContext(Dispatchers.Main) {
+                  levelDb = level
+                  if (newUtterance && cost != null && cost.isFinite()) testCost = cost
+                  if (line != null) {
+                    testLog.add(0, line)
+                    if (testLog.size > 20) testLog.removeAt(testLog.lastIndex)
+                  }
+                }
+              }
             }
-          testLog.add(0, line)
-          if (testLog.size > 20) testLog.removeAt(testLog.lastIndex)
-          true
+          }
+        } catch (e: WakeWordUnavailableException) {
+          status = "Wake phrase isn't available on this device: ${e.message}"
+        } catch (e: IOException) {
+          status = e.message ?: "Microphone unavailable."
+        } catch (e: SecurityException) {
+          status = "Microphone permission is needed for the wake phrase."
+        } finally {
+          features.close()
+          speaker.close()
+          finishCapture()
         }
       }
+  }
+
+  private fun finishCapture() {
+    mode = Mode.IDLE
+    levelDb = Endpointer.SILENCE_DB
+    testCost = null
+    if (settings.wakeWordEnabled) WakeWord.start(getApplication())
+    refresh()
   }
 
   fun stop() {
@@ -250,81 +459,15 @@ internal class WakeEnrollmentViewModel(app: Application) : AndroidViewModel(app)
     refresh()
   }
 
-  /** Validates [typed] against the lexicon (reads only the needed words from en.phone). */
-  private suspend fun encode(typed: String): Result<String> =
-    withContext(Dispatchers.IO) {
-      val words = WakePhraseEncoder.words(typed)
-      if (words.isEmpty()) return@withContext WakePhraseEncoder(Lexicon.parse(emptySequence())).encode(typed)
-      val lexicon =
-        try {
-          Lexicon.load(getApplication<Application>().assets.open(Lexicon.ASSET_PATH), words.toSet())
-        } catch (e: IOException) {
-          return@withContext Result.failure(IOException("The wake-word dictionary is missing from the app."))
-        }
-      WakePhraseEncoder(lexicon).encode(typed)
-    }
-
-  /**
-   * Stops the background service, listens with [keywordLine], and calls [onHit] (main thread) with
-   * the speaker embedding of each detection until it returns false or the job is cancelled. Restarts
-   * the service afterwards if it is enabled.
-   */
-  private suspend fun runCapture(
-    keywordLine: String,
-    captureMode: Mode,
-    prompt: String,
-    onHit: (FloatArray?) -> Boolean,
-  ) {
-    val app = getApplication<Application>()
-    WakeWord.stop(app)
-    mode = Mode.LOADING
-    status = "Loading the wake-word models…"
-    try {
-      withContext(Dispatchers.IO) {
-        val engine = WakeWordEngine.create(app)
-        try {
-          engine.newDetector(keywordLine).use { detector ->
-            MicCapture.open().use { mic ->
-              val ring = RingBuffer((WakePipeline.WINDOW_SECONDS * WakePipeline.SAMPLE_RATE).toInt())
-              withContext(Dispatchers.Main) {
-                mode = captureMode
-                status = prompt
-              }
-              while (isActive) {
-                val chunk = mic.read() ?: throw IOException("The microphone stopped delivering audio.")
-                ring.write(chunk)
-                if (detector.accept(chunk)) {
-                  val embedding = engine.embed(SpeechTrim.trim(ring.snapshot(), WakePipeline.SAMPLE_RATE))
-                  ring.clear()
-                  if (!withContext(Dispatchers.Main) { onHit(embedding) }) break
-                }
-              }
-            }
-          }
-        } finally {
-          engine.close()
-        }
-      }
-    } catch (e: WakeWordUnavailableException) {
-      status = "Wake phrase isn't available on this device: ${e.message}"
-    } catch (e: IOException) {
-      status = e.message ?: "Microphone unavailable."
-    } catch (e: SecurityException) {
-      status = "Microphone permission is needed for the wake phrase."
-    } catch (e: IllegalArgumentException) {
-      status = "The wake-word engine rejected this phrase. Try a different one."
-    } finally {
-      mode = Mode.IDLE
-      if (settings.wakeWordEnabled) WakeWord.start(app)
-      refresh()
-    }
-  }
-
   companion object {
-    const val DEFAULT_PHRASE = "Hey Jarvis"
-    const val TAKES = 5
+    private const val TAG = "PaWakeWord"
+    const val DEFAULT_PHRASE = "Hey Friday"
+    const val LOUD_HINT = "Too loud: move the phone a bit away."
+    private const val LOUD_HINT_FRAMES = 20 // 1.6 s
 
     fun fmt(v: Float) = String.format(Locale.ROOT, "%.2f", v)
+
+    fun fmt3(v: Float) = String.format(Locale.ROOT, "%.3f", v)
   }
 }
 
@@ -335,14 +478,17 @@ private fun EnrollmentScreen(
   onBattery: () -> Unit,
 ) {
   val busy = model.mode != WakeEnrollmentViewModel.Mode.IDLE
+  val micOpen =
+    model.mode == WakeEnrollmentViewModel.Mode.RECORDING || model.mode == WakeEnrollmentViewModel.Mode.TESTING
   Column(
     Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Text("Wake phrase", style = MaterialTheme.typography.headlineSmall)
     Text(
-      "Say your phrase to start PhoneAgent hands-free, even on the lock screen. Voice match cuts " +
-        "down false wakes from other voices; it is not a security feature.",
+      "Say your phrase to start PhoneAgent hands-free, even on the lock screen. PhoneAgent learns " +
+        "the phrase from your own recordings, and voice match cuts down false wakes from other " +
+        "voices; it is not a security feature.",
       style = MaterialTheme.typography.bodyMedium,
     )
 
@@ -354,27 +500,44 @@ private fun EnrollmentScreen(
       enabled = !busy,
       isError = model.phraseError != null,
       supportingText = {
-        Text(model.phraseError ?: "Two or three distinct words work best, e.g. “Hey Jarvis”.")
+        Text(model.phraseError ?: "Any phrase. Two or three distinct words work best, e.g. “Hey Friday”.")
       },
       modifier = Modifier.fillMaxWidth(),
     )
 
     Card(Modifier.fillMaxWidth()) {
       Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Voice match", style = MaterialTheme.typography.titleMedium)
+        Text("Your recordings", style = MaterialTheme.typography.titleMedium)
         Text(
-          model.enrolledPhrase?.let { "Enrolled: “$it” · threshold ${model.threshold?.let(WakeEnrollmentViewModel::fmt)}" }
-            ?: "Not enrolled yet. Record ${WakeEnrollmentViewModel.TAKES} takes in a quiet room."
+          model.enrolledPhrase?.let {
+            "Enrolled: “$it” · match ≤ ${model.matchThreshold?.let(WakeEnrollmentViewModel::fmt3)} · " +
+              "voice ≥ ${model.voiceThreshold?.let(WakeEnrollmentViewModel::fmt)}"
+          }
+            ?: "Not enrolled yet. Tap Record and say the phrase ${EnrollmentLogic.TAKES} times, " +
+              "pausing after each."
         )
-        if (model.mode == WakeEnrollmentViewModel.Mode.ENROLLING) {
-          LinearProgressIndicator(
-            progress = { model.takes / WakeEnrollmentViewModel.TAKES.toFloat() },
-            modifier = Modifier.fillMaxWidth(),
-          )
-          Text("${model.takes} of ${WakeEnrollmentViewModel.TAKES} takes")
-        } else if (model.mode == WakeEnrollmentViewModel.Mode.LOADING) {
-          LinearProgressIndicator(Modifier.fillMaxWidth())
+        when (model.mode) {
+          WakeEnrollmentViewModel.Mode.RECORDING -> {
+            LinearProgressIndicator(
+              progress = { model.takes / EnrollmentLogic.TAKES.toFloat() },
+              modifier = Modifier.fillMaxWidth(),
+            )
+            Text("${model.takes} of ${EnrollmentLogic.TAKES} takes")
+          }
+          WakeEnrollmentViewModel.Mode.ANALYZING -> LinearProgressIndicator(Modifier.fillMaxWidth())
+          else -> Unit
         }
+        if (micOpen) {
+          Text("Mic level", style = MaterialTheme.typography.labelMedium)
+          LinearProgressIndicator(
+            progress = { ((model.levelDb + 60f) / 60f).coerceIn(0f, 1f) },
+            modifier = Modifier.fillMaxWidth(),
+            color =
+              if (model.hint == WakeEnrollmentViewModel.LOUD_HINT) MaterialTheme.colorScheme.error
+              else MaterialTheme.colorScheme.primary,
+          )
+        }
+        model.hint?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           if (busy) {
             Button(onClick = model::stop) { Text("Stop") }
@@ -388,6 +551,15 @@ private fun EnrollmentScreen(
           }
         }
         model.status?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+        if (model.mode == WakeEnrollmentViewModel.Mode.TESTING) {
+          val cost = model.testCost
+          val thr = model.matchThreshold
+          Text(
+            if (cost == null || thr == null) "Say the phrase, then pause…"
+            else "Last utterance: match ${WakeEnrollmentViewModel.fmt3(cost)} (wakes at ≤ ${WakeEnrollmentViewModel.fmt3(thr)})",
+            style = MaterialTheme.typography.bodyMedium,
+          )
+        }
         for (line in model.testLog) Text(line, style = MaterialTheme.typography.bodySmall)
       }
     }
@@ -400,6 +572,7 @@ private fun EnrollmentScreen(
         Text(
           when {
             model.running -> "Listening (see the notification to pause)"
+            model.enabled && model.enrolledPhrase == null -> "On, but record your phrase first"
             model.enabled -> "On, but not listening right now"
             else -> "Off"
           },

@@ -1,7 +1,7 @@
 package com.malladi2610.phoneagent.wakeword
 
 /**
- * Decides what a keyword hit means. Pure and single-threaded (owned by the listening loop), so the
+ * Decides what a phrase hit means. Pure and single-threaded (owned by the listening loop), so the
  * pause / cooldown / one-turn-at-a-time rules are unit-tested.
  *
  * - A hit while listening asks for voice verification ([Action.VERIFY]); a score ≥ [threshold]

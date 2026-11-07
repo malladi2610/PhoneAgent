@@ -5,17 +5,22 @@
 #
 # Produces (all gitignored):
 #   Android/src/pa-wakeword/localrepo/        Maven repo with the sherpa-onnx 2.0.1 static-link AAR,
-#                                             trimmed to arm64-v8a (see settings.gradle.kts)
+#                                             trimmed to arm64-v8a (see settings.gradle.kts); used for
+#                                             the CAM++ speaker embedding (voice match)
 #   Android/src/pa-wakeword/src/main/assets/wakeword/
-#                                             KWS encoder/decoder/joiner, tokens.txt, en.phone,
-#                                             keywords.txt (generated), CAM++ speaker model
+#                                             openWakeWord feature models melspectrogram.tflite and
+#                                             embedding_model.tflite (Apache-2.0), CAM++ speaker model
+#   Android/src/pa-wakeword/testmodels/       the ONNX copies of the two feature models, for the JVM
+#                                             unit tests only (never packaged)
+#
+# Files of the old keyword-spotter design (KWS model, en.phone, keywords.txt) are deleted from the
+# assets directory so they are not packaged any more.
 #
 # Every download is pinned by size and sha256. The script is idempotent: when everything is in
 # place it only verifies checksums and prints "up to date".
 #
 # Optional: PA_WAKEWORD_SEED_DIR=<dir> makes the script look for already-downloaded copies of the
-# three downloads (any file name, up to 3 levels deep, matched by size + sha256) before using the
-# network.
+# downloads (any file name, up to 3 levels deep, matched by size + sha256) before using the network.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,28 +44,31 @@ AAR_SHA=07e042d97f3a6bd5b7fe74d4eef0513dc01a714b16c15a903250095aba43a575
 JNI_SHA=491b1b6e287fdfe5e0e1ffa918f5e5556299cb14bea7b7b8a0c19468f4156193   # jni/arm64-v8a/libsherpa-onnx-jni.so
 CLASSES_SHA=0ee4991c56c19ef5a8a573b01891193d7298ffe7ebcc68f42b944361d8869d93 # classes.jar
 
-KWS_NAME="sherpa-onnx-kws-zipformer-zh-en-3M-2025-12-20"
-KWS_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/${KWS_NAME}.tar.bz2"
-KWS_SIZE=32885699
-KWS_SHA=68447f4fbc67e70eee3a93961f36e81e98f47aef73ce7e7ca00885c6cd3616a6
+# openWakeWord v0.5.1 release: only the two shared feature models (Apache-2.0; NOT the pretrained
+# wake-word models, which are CC BY-NC-SA). name size sha256 destination
+OWW_URL="https://github.com/dscripka/openWakeWord/releases/download/v0.5.1"
+TESTMODELS="$MODULE/testmodels"
+OWW_FILES=(
+  "melspectrogram.tflite 1092516 96fa0adccb6e8cf95cb14465409a1a2898ee4a96a85bb9ed3c7eb0e68bf163e8 $ASSETS"
+  "embedding_model.tflite 1330312 c0aea21eb84a4ce90a08c870da41b7a7173b45269e6a3207c71d67c40f3a59d8 $ASSETS"
+  "melspectrogram.onnx 1087958 ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f $TESTMODELS"
+  "embedding_model.onnx 1326578 70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f $TESTMODELS"
+)
 
 CAMPP_NAME="3dspeaker_speech_campplus_sv_en_voxceleb_16k.onnx"
 CAMPP_URL="https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-recongition-models/${CAMPP_NAME}"
 CAMPP_SIZE=29596978
 CAMPP_SHA=357a834f702b80161e5b981182c038e18553c1f2ca752ed6cec2052365d4129b
 
-# Files taken from the KWS archive: name sha256
-KWS_FILES=(
-  "encoder-epoch-13-avg-2-chunk-16-left-64.int8.onnx 408bbd740838c42d5bf6d1c5b80b3c88b616c7860b92d980328b5b068c76ae48"
-  "decoder-epoch-13-avg-2-chunk-16-left-64.onnx 63a22dd60f40fff082ac3e09afa507f6787da36df76ded2fbe145fa233e22c21"
-  "joiner-epoch-13-avg-2-chunk-16-left-64.int8.onnx 190d4067b4cc20b72a42a1916e69d92052000fb7051a427ebb1bc72a69207dc1"
-  "tokens.txt 2d3f32311f9b692b964da3c90e830258d3e78e013cb0c992dbfb15cd5a1a71b0"
-  "en.phone f7000ec3a90544c0c7c16090d8951779c2b322e14dad5006290f498567d439ea"
+# Left over from the keyword-spotter design; removed if present.
+STALE_FILES=(
+  encoder-epoch-13-avg-2-chunk-16-left-64.int8.onnx
+  decoder-epoch-13-avg-2-chunk-16-left-64.onnx
+  joiner-epoch-13-avg-2-chunk-16-left-64.int8.onnx
+  tokens.txt
+  en.phone
+  keywords.txt
 )
-
-# The KeywordSpotter constructor needs a valid keywords file; the user's phrase is passed at runtime
-# through createStream(keywords).
-KEYWORDS_TXT="HH EY1 JH AA1 R V AH0 S :1.5 #0.25 @HEY_JARVIS"
 
 # --- Helpers --------------------------------------------------------------------------------------
 sha256() {
@@ -102,17 +110,20 @@ aar_ok() {
   [[ "$(cat "$AAR_STAMP")" == "$AAR_SHA $(sha256 "$AAR_OUT")" ]]
 }
 
-kws_ok() {
-  local entry name sha
-  for entry in "${KWS_FILES[@]}"; do
-    name="${entry%% *}"; sha="${entry##* }"
-    has_sha "$ASSETS/$name" "$sha" || return 1
+oww_ok() {
+  local entry name size sha dir
+  for entry in "${OWW_FILES[@]}"; do
+    read -r name size sha dir <<<"$entry"
+    has_sha "$dir/$name" "$sha" || return 1
   done
 }
 
 campp_ok() { has_sha "$ASSETS/$CAMPP_NAME" "$CAMPP_SHA"; }
 
-keywords_ok() { [[ -f "$ASSETS/keywords.txt" && "$(cat "$ASSETS/keywords.txt")" == "$KEYWORDS_TXT" ]]; }
+stale_ok() {
+  local name
+  for name in "${STALE_FILES[@]}"; do [[ ! -e "$ASSETS/$name" ]] || return 1; done
+}
 
 # --- Install steps --------------------------------------------------------------------------------
 install_aar() {
@@ -143,20 +154,16 @@ EOF
   echo "  sherpa-onnx AAR: installed $AAR_OUT"
 }
 
-install_kws() {
-  local t entry name sha; ensure_tmp; t="$TMP"
-  fetch "KWS model" "$KWS_URL" "$KWS_SIZE" "$KWS_SHA" "$t/kws.tar.bz2"
-  local members=()
-  for entry in "${KWS_FILES[@]}"; do members+=("$KWS_NAME/${entry%% *}"); done
-  tar -xjf "$t/kws.tar.bz2" -C "$t" "${members[@]}"
-  mkdir -p "$ASSETS"
-  for entry in "${KWS_FILES[@]}"; do
-    name="${entry%% *}"; sha="${entry##* }"
-    has_sha "$t/$KWS_NAME/$name" "$sha" || die "KWS model: unexpected $name"
-    mv -f "$t/$KWS_NAME/$name" "$ASSETS/$name"
+install_oww() {
+  local t entry name size sha dir; ensure_tmp; t="$TMP"
+  for entry in "${OWW_FILES[@]}"; do
+    read -r name size sha dir <<<"$entry"
+    has_sha "$dir/$name" "$sha" && continue
+    fetch "openWakeWord $name" "$OWW_URL/$name" "$size" "$sha" "$t/$name"
+    mkdir -p "$dir"
+    mv -f "$t/$name" "$dir/$name"
+    echo "  openWakeWord $name: installed into $dir"
   done
-  rm -f "$t/kws.tar.bz2"
-  echo "  KWS model: installed into $ASSETS"
 }
 
 install_campp() {
@@ -167,21 +174,22 @@ install_campp() {
   echo "  CAM++ speaker model: installed into $ASSETS"
 }
 
-install_keywords() {
-  mkdir -p "$ASSETS"
-  printf '%s\n' "$KEYWORDS_TXT" >"$ASSETS/keywords.txt"
-  echo "  keywords.txt: written"
+remove_stale() {
+  local name
+  for name in "${STALE_FILES[@]}"; do
+    if [[ -e "$ASSETS/$name" ]]; then rm -f "$ASSETS/$name"; echo "  removed old $name"; fi
+  done
 }
 
 # --- Main -----------------------------------------------------------------------------------------
 changed=0
 aar_ok || { install_aar; changed=1; }
-kws_ok || { install_kws; changed=1; }
+oww_ok || { install_oww; changed=1; }
 campp_ok || { install_campp; changed=1; }
-keywords_ok || { install_keywords; changed=1; }
+stale_ok || { remove_stale; changed=1; }
 
 # Re-verify everything after installing.
-aar_ok && kws_ok && campp_ok && keywords_ok || die "verification failed after install"
+aar_ok && oww_ok && campp_ok && stale_ok || die "verification failed after install"
 
 if [[ "$changed" == 0 ]]; then
   echo "wakeword assets: up to date ($MODULE)"

@@ -3,3 +3,4 @@
 # PhoneAgent wake word: sherpa-onnx AAR and models (fetched by scripts/fetch-wakeword-assets.sh)
 Android/src/pa-wakeword/localrepo/
 Android/src/pa-wakeword/src/main/assets/wakeword/
+Android/src/pa-wakeword/testmodels/
