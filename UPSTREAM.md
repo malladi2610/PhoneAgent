@@ -14,6 +14,7 @@ The `upstream` remote can only fetch: its push URL is set to `no-push-to-upstrea
 - `Android/src/pa-*/`: PhoneAgent modules
 - `Android/src/app/src/main/java/com/google/ai/edge/gallery/phoneagent/`: app-side glue
 - `docs/superpowers/`, `docs/research/`, `UPSTREAM.md`
+- `scripts/fetch-wakeword-assets.sh`: fetches the sherpa-onnx AAR and wake-word models (pinned sha256, gitignored); run it before building
 
 ## Touch points in upstream files (keep each one small; add new ones here)
 | File | Change |
@@ -25,3 +26,4 @@ The `upstream` remote can only fetch: its push URL is set to `no-push-to-upstrea
 | `Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AgentTools.kt` | Track B: `phoneToolsBridge` (lazy `PhoneToolsGalleryBridge.create(context)`) appended to `getAvailableTools()` so it gets `onAttach`; `getLiteRtToolProviders()` override = other tools via `tool(it)` + `phoneToolsBridge.providers()` |
 | `Android/src/app/src/main/java/com/google/ai/edge/gallery/tools/ToolAction.kt` | Track B: `ToolActionName.CONFIRM_PHONE_TOOL` + `ConfirmToolCallAction(toolName, summary, result: CompletableDeferred<Boolean>)` |
 | `Android/src/app/src/main/java/com/google/ai/edge/gallery/customtasks/agentchat/AgentChatScreen.kt` | Track B: `currentPhoneConfirmAction` state, `is ConfirmToolCallAction` branch in the action loop, and `PhoneToolConfirmDialog` (Allow/Deny) render block after the MCP dialog |
+| `Android/src/settings.gradle.kts` | `exclusiveContent` repository `pa-wakeword/localrepo` for group `com.k2fsa.sherpa.onnx` (sherpa-onnx AAR, created by `scripts/fetch-wakeword-assets.sh`) |
