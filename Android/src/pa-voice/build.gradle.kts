@@ -28,4 +28,5 @@ dependencies {
   implementation(libs.androidx.ui)
   testImplementation(pa.junit)
   testImplementation(pa.coroutines.test)
+  testImplementation(pa.okhttp.mockwebserver)
 }
