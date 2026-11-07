@@ -14,6 +14,7 @@ The `upstream` remote can only fetch: its push URL is set to `no-push-to-upstrea
 - `Android/src/pa-*/`: PhoneAgent modules
 - `Android/src/app/src/main/java/com/google/ai/edge/gallery/phoneagent/`: app-side glue
 - `docs/superpowers/`, `docs/research/`, `UPSTREAM.md`
+- `scripts/fetch-wakeword-assets.sh`: fetches the sherpa-onnx AAR and wake-word models (pinned sha256, gitignored); run it before building
 
 ## Touch points in upstream files (keep each one small; add new ones here)
 | File | Change |
@@ -22,3 +23,4 @@ The `upstream` remote can only fetch: its push URL is set to `no-push-to-upstrea
 | `Android/src/app/src/main/res/values/strings.xml` | `app_name` = "PhoneAgent" |
 | `Android/src/settings.gradle.kts` | `pa` version catalog (`gradle/pa.versions.toml`) + `include(":pa-core", ":pa-tools", ":pa-voice", ":pa-wakeword")` |
 | `Android/src/app/build.gradle.kts` | `implementation(project(":pa-*"))` for the four modules |
+| `Android/src/settings.gradle.kts` | `exclusiveContent` repository `pa-wakeword/localrepo` for group `com.k2fsa.sherpa.onnx` (sherpa-onnx AAR, created by `scripts/fetch-wakeword-assets.sh`) |
