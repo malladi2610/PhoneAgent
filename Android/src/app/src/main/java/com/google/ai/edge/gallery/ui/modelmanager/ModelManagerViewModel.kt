@@ -66,6 +66,8 @@ import com.google.ai.edge.gallery.data.NumberSliderConfig
 import com.google.ai.edge.gallery.data.OssModelImportLogger
 import com.google.ai.edge.gallery.data.PendingDownload
 import com.google.ai.edge.gallery.data.RuntimeType
+import com.google.ai.edge.gallery.phoneagent.OllamaModelDownloader
+import com.google.ai.edge.gallery.phoneagent.OllamaModelSource
 import com.google.ai.edge.gallery.data.SOC
 import com.google.ai.edge.gallery.data.SystemPromptRepository
 import com.google.ai.edge.gallery.data.Task
@@ -465,6 +467,7 @@ constructor(
         RuntimeType.UNKNOWN to LiteRtLmModelDownloader(context, downloadRepository),
         RuntimeType.LITERT_LM to LiteRtLmModelDownloader(context, downloadRepository),
         RuntimeType.AICORE to AICoreModelDownloader(context),
+        RuntimeType.OLLAMA_CLOUD to OllamaModelDownloader(), // PhoneAgent
       ),
     ossModelImportLogger = ossModelImportLogger,
     networkStateProvider = networkStateProvider,
@@ -2246,6 +2249,8 @@ constructor(
           }
         }
         registerAllowlistSpeechModels(_supplementaryModels)
+        // PhoneAgent: register Ollama Cloud models under Agent Chat (see UPSTREAM.md).
+        OllamaModelSource.addTo(curTasks, context)
 
         // Find models from allowlist if a task's `modelNames` field is not empty.
         Log.d(TAG, "loadModelAllowlist: Processing task modelNames")

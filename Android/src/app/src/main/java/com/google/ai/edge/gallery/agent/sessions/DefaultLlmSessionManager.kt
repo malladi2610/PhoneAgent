@@ -16,6 +16,7 @@
 
 package com.google.ai.edge.gallery.agent.sessions
 
+import com.google.ai.edge.gallery.phoneagent.isOllamaCloud
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
@@ -450,7 +451,7 @@ constructor(
     source: ContextCompactionSource,
   ): InternalCompactionResult =
     withContext(ioDispatcher) {
-      if (!Config.isContextCompactEnabled() || model.isAiCore) {
+      if (!Config.isContextCompactEnabled() || model.isAiCore || model.isOllamaCloud) {
         return@withContext InternalCompactionResult(CompactionResult.NOT_NEEDED)
       }
       if (contextCompactor == null && fallbackContextCompactor == null) {
@@ -548,7 +549,7 @@ constructor(
     }
 
   override fun isTokenLimitReached(sessionId: String, model: Model): Boolean {
-    if (!Config.isContextCompactEnabled() || model.isAiCore) {
+    if (!Config.isContextCompactEnabled() || model.isAiCore || model.isOllamaCloud) {
       return false
     }
     val config = sessionConfigs[sessionId]

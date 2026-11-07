@@ -16,6 +16,7 @@
 
 package com.google.ai.edge.gallery.di
 
+import com.google.ai.edge.gallery.phoneagent.OllamaModelDownloader
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.core.DataStoreFactory
@@ -237,6 +238,15 @@ internal object AppModule {
   @RuntimeTypeKey(RuntimeType.AICORE)
   fun provideAICoreModelDownloader(@ApplicationContext context: Context): ModelDownloader {
     return AICoreModelDownloader(context)
+  }
+
+  // PhoneAgent: Ollama Cloud models have nothing to download (see UPSTREAM.md).
+  @Provides
+  @Singleton
+  @IntoMap
+  @RuntimeTypeKey(RuntimeType.OLLAMA_CLOUD)
+  fun provideOllamaModelDownloader(): ModelDownloader {
+    return OllamaModelDownloader()
   }
 
   @Provides

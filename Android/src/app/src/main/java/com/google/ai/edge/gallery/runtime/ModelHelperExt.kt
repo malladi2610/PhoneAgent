@@ -17,6 +17,8 @@
 package com.google.ai.edge.gallery.runtime
 
 import com.google.ai.edge.gallery.data.Model
+import com.google.ai.edge.gallery.phoneagent.OllamaCloudModelHelper
+import com.google.ai.edge.gallery.phoneagent.isOllamaCloud
 import com.google.ai.edge.gallery.runtime.aicore.AICoreModelHelper
 import com.google.ai.edge.gallery.ui.llmchat.LlmChatModelHelper
 
@@ -29,6 +31,10 @@ val Model.runtimeHelper: LlmModelHelper
     }
     if (this.isAiCore) {
       return AICoreModelHelper
+    }
+    // PhoneAgent: Ollama Cloud runtime (see UPSTREAM.md).
+    if (this.isOllamaCloud) {
+      return OllamaCloudModelHelper
     }
     return LlmChatModelHelper
   }
