@@ -43,7 +43,7 @@ logged in a form that will later feed the fine-tuning loop.
    - A separate agent loop inside Gallery: it duplicates existing code.
    - A standalone app: weeks before anything runs end to end.
 3. **Direct phone → `https://ollama.com` with an API key.** The Mac-over-LAN product option was
-   explicitly rejected. A base-URL override exists **for development only** (§9).
+   explicitly rejected. Development also uses the real key, so there's no base-URL override.
 4. **Tools in M1:** device status, device settings, apps & time, communication, and WhatsApp (§5.3).
 5. **Confirmation policy: ask before outward actions.**
    - Instant outward actions (`call`, `send_sms`) show a confirm card.
@@ -54,7 +54,7 @@ logged in a form that will later feed the fine-tuning loop.
 6. **Privacy is accepted for M1.** Contact lookups and message text are sent to Ollama Cloud.
    Milestone 2 moves these tools behind the local model.
 7. **Own app identity.** The app ID is `com.malladi2610.phoneagent` and the label is "PhoneAgent",
-   so it installs next to the official Gallery (§8).
+   so it installs next to the official Gallery (`com.google.ai.edge.gallery`, already on the S23) (§8).
 
 ## 3. Non-goals for M1
 
@@ -187,9 +187,8 @@ Wi-Fi settings) are re-implemented here, so the upstream `mobileactions` package
   - Registration is done in code by `phoneagent/OllamaModelSource`. Ollama models are **not** added
     to the allowlist JSON, which Gallery fetches from Google's GitHub at startup.
   - The single hook point is in `ui/modelmanager/ModelManagerViewModel.kt`, after the allowlist loads.
-- **Base URL:**
-  - Default `https://ollama.com`.
-  - The dev override (debug builds only) is described in §9.
+- **Base URL:** fixed to `https://ollama.com`, defined as one constant in `OllamaClient`.
+  There's no dev override in M1; development uses the real API key (§9).
 
 ### 5.6 `ActionLog`
 - One JSON line per tool call, appended to `filesDir/action_log/YYYY-MM-DD.jsonl`.
@@ -250,8 +249,7 @@ the repo root along with the merge procedure (`git fetch upstream && git merge u
    permission-request action.
 5. `ui/modelmanager/ModelManagerViewModel.kt`: call `OllamaModelSource` after the allowlist loads.
 6. `AndroidManifest.xml`: add the permissions and `<queries>` entries.
-7. Debug-only `network_security_config` (§9).
-8. `app/build.gradle.kts`: change `applicationId` from `com.google.aiedge.gallery` to
+7. `app/build.gradle.kts`: change `applicationId` from `com.google.aiedge.gallery` to
    `com.malladi2610.phoneagent` and the app label to "PhoneAgent", so the app installs alongside
    the official Gallery already on the S23. The Kotlin `namespace` stays `com.google.ai.edge.gallery`,
    which keeps upstream merges clean. The Hugging Face OAuth redirect scheme (`appAuthRedirectScheme`,
@@ -264,18 +262,19 @@ The planning stage may adjust this list. Any new touch point must be added to `U
 
 - **Mac:** M4 Pro, 24 GB RAM, Temurin JDK 25, Gradle 9.2.1 (wrapper), AGP 9.0.1, compileSdk 37,
   `adb` installed, Ollama 0.34.2 running and signed in with cloud models available.
-- **Android SDK:** not installed yet. Needed: command-line tools, platform 37, build-tools, plus
-  emulator and an arm64 Google APIs system image for the emulator loop.
-- **Dev base-URL override (debug builds only):**
-  - The emulator reaches the Mac's Ollama at `http://10.0.2.2:11434`. No key is needed, because the
-    Mac's signed-in Ollama proxies the cloud models.
-  - A debug-only network security config allows cleartext for `10.0.2.2`.
-  - Release builds are locked to `https://ollama.com`.
-- **Two test targets:**
-  - **Emulator:** for the agent loop, the UI, and most tools (volume, alarms, timers, contacts, the
-    SMS/call confirm flow — the emulator fakes telephony).
-  - **S23 over wireless `adb`:** for hardware and app-specific tools (torch, brightness on real
-    hardware, WhatsApp, Samsung Clock) and the real `ollama.com` + API key path.
+- **Android SDK:** not installed yet. Needed: command-line tools, platform 37, build-tools.
+  **No emulator** in M1.
+- **Test device: the S23 over wireless `adb`.** It's connected and already paired with this Mac.
+  - Model SM-S911B (`dm1q`), Android 17 / SDK 37, One UI 9.0, SoC SM8550, ~7 GB RAM.
+  - WhatsApp, Spotify and Samsung Clock are installed. `libcdsprpc.so` (FastRPC to Hexagon) is
+    present, which matters for M2.
+  - The `adb` port changes after a reboot or Wi-Fi change; rediscover it with `adb mdns services`.
+  - A USB cable is the fallback.
+  - Loop: `./gradlew :app:installDebug`, launch, test, read logcat and the ActionLog.
+- **Ollama during development:** the real `https://ollama.com` + API key path from day one, which is
+  exactly what M1 must prove. The Mac's local Ollama (signed in, `:cloud` models) is used only for
+  JVM-side experiments and for capturing fixtures.
+- **Call/SMS testing** uses the user's own number, so a bug can't contact anyone else.
 - **Unit tests** (JVM, `./gradlew :app:testDebugUnitTest`):
   - `OllamaClient` serialization against the §6 fixtures, using Ktor `MockEngine`.
   - The tool loop with fake tools: multiple calls per turn, step limit, unknown tool, tool exception,
@@ -297,8 +296,8 @@ The planning stage may adjust this list. Any new touch point must be added to `U
 6. "Open Spotify" (or another installed app) → the app opens.
 7. "Start a 5 minute timer" → a timer is running.
 8. "Text <contact> 'running late'" → `find_contact` → confirm card → the SMS is sent only after Allow.
-   Deny sends nothing.
-9. "Call <contact>" → confirm card → the call starts only after Allow.
+   Deny sends nothing. (Tested with a contact entry for the user's own number.)
+9. "Call <contact>" → confirm card → the call starts only after Allow. (Same own-number contact.)
 10. "WhatsApp <contact> 'see you at 7'" → WhatsApp opens on that chat with the text pre-filled.
 11. Airplane mode → a clear "can't reach Ollama Cloud" message; no crash.
 12. Every tool call from 2–10 appears in that day's ActionLog with the correct fields and no API key.
@@ -312,6 +311,7 @@ The planning stage may adjust this list. Any new touch point must be added to `U
 | The tool description JSON from LiteRT-LM isn't plain JSON Schema | The conversion function is unit-tested; we control the PhoneTools schemas |
 | `DefaultAgentRuntimeExecutor` / `LlmSessionManager` assume LiteRT-specific behaviour (compaction, token counts) | Implement `LlmConversationInstance` minimally; disable summarization compaction for `OLLAMA_CLOUD` if needed (noted in `UPSTREAM.md`) |
 | The confirm card blocks a tool thread while waiting | Same pattern as the existing MCP permission flow; the tool loop runs on `Dispatchers.IO` |
-| **Mac disk: 18 GB free**; SDK + emulator image + Gradle caches take about 12–15 GB | Free up space before setup, or skip the emulator image and use the S23 over wireless `adb` only |
+| **Mac disk: 18 GB free**; SDK + Gradle caches + build outputs take about 6–8 GB (no emulator) | Install only platform 37 + build-tools; check `df` after the first build |
+| Wireless `adb` drops (reboot, Wi-Fi change) | `adb mdns services` + `adb connect`; USB as fallback |
 | Samsung-specific intent behaviour (Clock, Contacts) | Covered by on-device acceptance tests 4, 7 and 8 |
 | Ollama Cloud rate limits or plan limits | Clear 429 message; the dev loop uses the Mac's signed-in Ollama |
