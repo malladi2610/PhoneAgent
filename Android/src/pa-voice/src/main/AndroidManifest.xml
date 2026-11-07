@@ -1,1 +1,59 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+  <!-- The fallback voice for errors uses the phone's TextToSpeech engine. -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.TTS_SERVICE" />
+    </intent>
+  </queries>
+
+  <application>
+
+    <!-- Default digital assistant (side button, lock screen). -->
+    <service
+        android:name="com.malladi2610.phoneagent.voice.assistant.PaVoiceInteractionService"
+        android:exported="true"
+        android:label="@string/pa_voice_service_label"
+        android:permission="android.permission.BIND_VOICE_INTERACTION">
+      <meta-data
+          android:name="android.voice_interaction"
+          android:resource="@xml/pa_voice_interaction" />
+      <intent-filter>
+        <action android:name="android.service.voice.VoiceInteractionService" />
+      </intent-filter>
+    </service>
+
+    <service
+        android:name="com.malladi2610.phoneagent.voice.assistant.PaVoiceInteractionSessionService"
+        android:exported="true"
+        android:permission="android.permission.BIND_VOICE_INTERACTION" />
+
+    <!-- Required by the platform for the assistant role; a minimal Sarvam-backed recognizer. -->
+    <service
+        android:name="com.malladi2610.phoneagent.voice.assistant.PaRecognitionService"
+        android:exported="true"
+        android:label="@string/pa_voice_service_label">
+      <intent-filter>
+        <action android:name="android.speech.RecognitionService" />
+      </intent-filter>
+      <meta-data
+          android:name="android.speech"
+          android:resource="@xml/pa_recognition_service" />
+    </service>
+
+    <!-- Exported: Settings opens it as the assistant's settingsActivity. -->
+    <activity
+        android:name="com.malladi2610.phoneagent.voice.VoiceSetupActivity"
+        android:exported="true"
+        android:label="@string/pa_voice_setup_label" />
+
+    <receiver
+        android:name="com.malladi2610.phoneagent.voice.StopVoiceTurnReceiver"
+        android:exported="false" />
+  </application>
+</manifest>
