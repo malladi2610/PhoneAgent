@@ -314,4 +314,4 @@ The planning stage may adjust this list. Any new touch point must be added to `U
 | **Mac disk: 18 GB free**; SDK + Gradle caches + build outputs take about 6–8 GB (no emulator) | Install only platform 37 + build-tools; check `df` after the first build |
 | Wireless `adb` drops (reboot, Wi-Fi change) | `adb mdns services` + `adb connect`; USB as fallback |
 | Samsung-specific intent behaviour (Clock, Contacts) | Covered by on-device acceptance tests 4, 7 and 8 |
-| Ollama Cloud rate limits or plan limits | Clear 429 message; the dev loop uses the Mac's signed-in Ollama |
+| Ollama Cloud rate limits or plan limits | Clear 429 message; JVM experiments and fixture capture use the Mac's signed-in Ollama, so on-device testing is the only consumer of the API key's quota |
