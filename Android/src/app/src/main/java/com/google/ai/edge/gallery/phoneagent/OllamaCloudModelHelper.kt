@@ -211,11 +211,29 @@ object OllamaCloudModelHelper : LlmModelHelper {
 
   /** Gallery's system instruction plus a fresh phone preamble, as the first message. */
   private fun withSystemMessage(instance: OllamaConversationInstance) {
-    val text = listOf(instance.systemInstruction.trim(), phonePreamble()).filter { it.isNotEmpty() }
-    val system = ChatMessage(ChatMessage.Role.SYSTEM, text.joinToString("\n\n"))
+    val system =
+      ChatMessage(
+        ChatMessage.Role.SYSTEM,
+        composeSystemPrompt(instance.systemInstruction, phonePreamble()),
+      )
     val messages = instance.conversation.messages
     if (messages.firstOrNull()?.role == ChatMessage.Role.SYSTEM) messages[0] = system
     else messages.add(0, system)
+  }
+
+  /**
+   * Phone instructions first, then Gallery's Agent Chat prompt. Gallery's prompt tells the model to
+   * look for a skill and otherwise stop, which made cloud models hesitate over phone requests.
+   */
+  internal fun composeSystemPrompt(galleryPrompt: String, phonePreamble: String): String {
+    val gallery = galleryPrompt.trim()
+    if (gallery.isEmpty()) return phonePreamble
+    return phonePreamble +
+      "\n\nThese phone instructions take priority over the skill instructions below: when a " +
+      "phone tool can do what the user asked, call it right away — don't search for a skill " +
+      "first and never reply that no skill was found. Use skills and MCP tools only for requests " +
+      "the phone tools can't handle.\n\n" +
+      gallery
   }
 
   internal fun phonePreamble(now: ZonedDateTime = ZonedDateTime.now()): String {
@@ -223,7 +241,7 @@ object OllamaCloudModelHelper : LlmModelHelper {
     return """
       You are PhoneAgent, running on the user's Android phone (${Build.MANUFACTURER} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}).
       Local time: $time (time zone ${now.zone.id}).
-      Besides skills and MCP tools, you can call the phone tools directly (for example set_flashlight, set_volume, get_device_status) whenever the user asks for something on the phone. Call several tools in one reply when the request has several parts. Keep the final answer short.
+      You can call the phone tools directly (for example set_flashlight, set_volume, get_device_status) whenever the user asks for something on the phone. Call several tools in one reply when the request has several parts. Keep the final answer short.
     """
       .trimIndent()
   }
