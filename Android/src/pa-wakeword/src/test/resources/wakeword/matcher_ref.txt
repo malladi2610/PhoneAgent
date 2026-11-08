@@ -1,0 +1,6 @@
+template 0 8
+template 1 10
+template 2 9
+query 0 11 0.075222
+query 1 8 0.253902
+query 2 7 0.108644

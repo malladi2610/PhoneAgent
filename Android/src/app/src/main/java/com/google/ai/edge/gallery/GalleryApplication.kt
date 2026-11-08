@@ -41,6 +41,7 @@ class GalleryApplication : Application() {
       return
     }
     super.onCreate()
+    com.google.ai.edge.gallery.phoneagent.PhoneAgentGraph.install(this) // PhoneAgent (UPSTREAM.md)
     registerComponentCallbacks(ttsMemoryTrimCallbacks)
     // Initialize the notification schedule manager to load the scheduled notifications from the
     // disk.

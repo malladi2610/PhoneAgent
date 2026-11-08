@@ -36,14 +36,24 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
+  // PhoneAgent: separate version catalog for our modules (see UPSTREAM.md).
+  versionCatalogs { create("pa") { from(files("gradle/pa.versions.toml")) } }
   repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
   repositories {
     //        mavenLocal()
     google()
     mavenCentral()
+    // PhoneAgent: sherpa-onnx AAR for :pa-wakeword, created by scripts/fetch-wakeword-assets.sh.
+    exclusiveContent {
+      forRepository { maven { url = settingsDir.resolve("pa-wakeword/localrepo").toURI() } }
+      filter { includeGroup("com.k2fsa.sherpa.onnx") }
+    }
   }
 }
 
 rootProject.name = "AI Edge Gallery"
 
 include(":app")
+
+// PhoneAgent modules (see UPSTREAM.md).
+include(":pa-core", ":pa-tools", ":pa-voice", ":pa-wakeword")

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Assistant-role qualification (PermissionController AssistantRoleBehavior) needs sessionService,
+  recognitionService and supportsAssist="true"; the service must require BIND_VOICE_INTERACTION.
+-->
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="com.malladi2610.phoneagent.voice.assistant.PaVoiceInteractionSessionService"
+    android:recognitionService="com.malladi2610.phoneagent.voice.assistant.PaRecognitionService"
+    android:settingsActivity="com.malladi2610.phoneagent.voice.VoiceSetupActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true"
+    android:supportsLocalInteraction="false" />

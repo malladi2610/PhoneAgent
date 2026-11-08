@@ -1,0 +1,103 @@
+{
+    "model": "deepseek-v4.1-flash:cloud",
+    "stream": false,
+    "messages": [
+        {
+            "role": "system",
+            "content": "You control an Android phone using tools. Use tools when the user asks for a phone action."
+        },
+        {
+            "role": "user",
+            "content": "Turn on the torch and set media volume to 30%"
+        },
+        {
+            "role": "assistant",
+            "content": "I'll do both right away.",
+            "tool_calls": [
+                {
+                    "id": "call_rpmyhjsh",
+                    "function": {
+                        "index": 0,
+                        "name": "set_flashlight",
+                        "arguments": {
+                            "on": true
+                        }
+                    }
+                },
+                {
+                    "id": "call_w2puekrw",
+                    "function": {
+                        "index": 1,
+                        "name": "set_volume",
+                        "arguments": {
+                            "stream": "media",
+                            "percent": 30
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "role": "tool",
+            "tool_name": "set_flashlight",
+            "tool_call_id": "call_rpmyhjsh",
+            "content": "{\"status\": \"ok\"}"
+        },
+        {
+            "role": "tool",
+            "tool_name": "set_volume",
+            "tool_call_id": "call_w2puekrw",
+            "content": "{\"status\": \"ok\"}"
+        }
+    ],
+    "tools": [
+        {
+            "type": "function",
+            "function": {
+                "name": "set_flashlight",
+                "description": "Turns the flashlight on or off",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "on": {
+                            "type": "boolean",
+                            "description": "true to turn on"
+                        }
+                    },
+                    "required": [
+                        "on"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "set_volume",
+                "description": "Sets a volume stream to a percentage",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "stream": {
+                            "type": "string",
+                            "enum": [
+                                "media",
+                                "ring",
+                                "alarm",
+                                "notification"
+                            ]
+                        },
+                        "percent": {
+                            "type": "integer",
+                            "description": "0-100"
+                        }
+                    },
+                    "required": [
+                        "stream",
+                        "percent"
+                    ]
+                }
+            }
+        }
+    ]
+}

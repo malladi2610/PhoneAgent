@@ -94,6 +94,16 @@ enum class RuntimeType(
     supportsDelete = false,
     installsLanguagePacks = true,
   ),
+  // PhoneAgent: cloud models served by Ollama Cloud (see UPSTREAM.md). Nothing is downloaded; the
+  // startup "download" just marks the model ready.
+  @SerializedName("ollama_cloud")
+  OLLAMA_CLOUD(
+    downloadsViaRepository = false,
+    autoDownloadsOnStartup = true,
+    supportsTopLevelDownload = false,
+    supportsDelete = false,
+    installsLanguagePacks = false,
+  ),
 }
 
 enum class AICoreModelReleaseStage {

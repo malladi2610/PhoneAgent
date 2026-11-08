@@ -26,6 +26,8 @@ enum class ToolActionName() {
   ASK_INFO,
   REQUEST_PERMISSION,
   ASK_MCP_TOOL_CALL_PERMISSION,
+  // PhoneAgent (see UPSTREAM.md).
+  CONFIRM_PHONE_TOOL,
 }
 
 /**
@@ -116,6 +118,20 @@ class AskMcpToolCallPermissionAction(
   val argument: String,
   val result: CompletableDeferred<PermissionResult> = CompletableDeferred(),
 ) : ToolAction(name = ToolActionName.ASK_MCP_TOOL_CALL_PERMISSION)
+
+/**
+ * PhoneAgent (see UPSTREAM.md): emitted by a phone tool that acts instantly (call, SMS) to show an
+ * Allow/Deny confirm card.
+ *
+ * @property toolName The phone tool about to run (e.g. `send_sms`).
+ * @property summary Human-readable action, e.g. "Send SMS to +49 151 …: 'Running late'".
+ * @property result Completed with true on Allow, false on Deny or dismiss.
+ */
+class ConfirmToolCallAction(
+  val toolName: String,
+  val summary: String,
+  val result: CompletableDeferred<Boolean> = CompletableDeferred(),
+) : ToolAction(name = ToolActionName.CONFIRM_PHONE_TOOL)
 
 /**
  * Parsed JSON data returned from a JavaScript skill execution (`[CallJsToolAction]`).

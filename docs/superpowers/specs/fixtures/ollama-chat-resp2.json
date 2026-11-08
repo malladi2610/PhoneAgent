@@ -1,0 +1,14 @@
+{
+    "model": "deepseek-v4.1-flash",
+    "created_at": "2026-11-07T11:33:01.318846091Z",
+    "message": {
+        "role": "assistant",
+        "content": "Done \u2014 the torch is on and media volume is set to 30%."
+    },
+    "done": true,
+    "done_reason": "stop",
+    "total_duration": 190652929,
+    "prompt_eval_count": 540,
+    "prompt_eval_cached_count": 384,
+    "eval_count": 17
+}

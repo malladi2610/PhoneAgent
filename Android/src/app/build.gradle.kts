@@ -33,7 +33,7 @@ android {
   compileSdk { this.version = release(37) { minorApiLevel = 0 } }
 
   defaultConfig {
-    applicationId = "com.google.aiedge.gallery"
+    applicationId = "com.malladi2610.phoneagent"
     minSdk = 31
     targetSdk = 37
     versionCode = 52
@@ -67,6 +67,8 @@ android {
     buildConfig = true
   }
   packaging { jniLibs { pickFirsts.add("**/liblitertlm_jni.so") } }
+  // PhoneAgent: keep wake-word models uncompressed so sherpa-onnx can load them directly.
+  androidResources { noCompress += listOf("onnx") }
 }
 
 kotlin {
@@ -77,6 +79,11 @@ kotlin {
 }
 
 dependencies {
+  // PhoneAgent modules (see UPSTREAM.md).
+  implementation(project(":pa-core"))
+  implementation(project(":pa-tools"))
+  implementation(project(":pa-voice"))
+  implementation(project(":pa-wakeword"))
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.androidx.activity.compose)

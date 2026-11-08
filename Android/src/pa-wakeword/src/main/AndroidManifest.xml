@@ -1,0 +1,39 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+  <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+  <application>
+    <service
+        android:name="com.malladi2610.phoneagent.wakeword.WakeWordService"
+        android:exported="false"
+        android:foregroundServiceType="microphone" />
+
+    <receiver
+        android:name="com.malladi2610.phoneagent.wakeword.BootReceiver"
+        android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+
+    <activity
+        android:name="com.malladi2610.phoneagent.wakeword.WakeEnrollmentActivity"
+        android:exported="false"
+        android:label="Wake phrase"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+
+    <activity
+        android:name="com.malladi2610.phoneagent.wakeword.WakeResumeActivity"
+        android:excludeFromRecents="true"
+        android:exported="false"
+        android:noHistory="true"
+        android:taskAffinity=""
+        android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+  </application>
+</manifest>

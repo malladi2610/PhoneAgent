@@ -1,0 +1,64 @@
+{
+    "model": "deepseek-v4.1-flash:cloud",
+    "stream": false,
+    "messages": [
+        {
+            "role": "system",
+            "content": "You control an Android phone using tools. Use tools when the user asks for a phone action."
+        },
+        {
+            "role": "user",
+            "content": "Turn on the torch and set media volume to 30%"
+        }
+    ],
+    "tools": [
+        {
+            "type": "function",
+            "function": {
+                "name": "set_flashlight",
+                "description": "Turns the flashlight on or off",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "on": {
+                            "type": "boolean",
+                            "description": "true to turn on"
+                        }
+                    },
+                    "required": [
+                        "on"
+                    ]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "set_volume",
+                "description": "Sets a volume stream to a percentage",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "stream": {
+                            "type": "string",
+                            "enum": [
+                                "media",
+                                "ring",
+                                "alarm",
+                                "notification"
+                            ]
+                        },
+                        "percent": {
+                            "type": "integer",
+                            "description": "0-100"
+                        }
+                    },
+                    "required": [
+                        "stream",
+                        "percent"
+                    ]
+                }
+            }
+        }
+    ]
+}
